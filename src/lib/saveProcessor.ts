@@ -6,8 +6,8 @@ import {
   isStageBoxKey,
   loadGameCatalog,
 } from "./gameDataLoader";
-import { ensureBulkCatalog } from "./bulkMarketCatalog";
 import { priceLookupFromService, priceService } from "./priceService";
+import { ensureBulkCatalog, type BulkCatalogProgress } from "./bulkMarketCatalog";
 import type { InventorySnapshot, PriceProgress, ResolvedInventory } from "../types";
 
 export async function processSaveFile(
@@ -27,7 +27,8 @@ export async function processSaveFile(
     throw new Es3Error("Could not decrypt save file.");
   }
 
-  const catalog = await loadGameCatalog();
+  // Bundled gamedata only — wiki overlay loads in background after UI is shown.
+  const catalog = await loadGameCatalog({ skipWiki: true });
   const snapshot = parseInventory(decrypted, file.lastModified, (key) =>
     isMaterialKey(catalog, key),
   );
@@ -36,9 +37,6 @@ export async function processSaveFile(
   const exclude = (key: number) => isStageBoxKey(catalog, key);
   const marketNames = ownedPrimaryMarketNames(snapshot, lookup, exclude);
 
-  await ensureBulkCatalog();
-  priceService.seedFromBulkCatalog(marketNames);
-
   const inventory = resolveInventory(snapshot, lookup, true, priceLookupFromService, {
     excludeItemKey: exclude,
   });
@@ -46,6 +44,30 @@ export async function processSaveFile(
   inventory.composition.currency = priceService.getCurrency();
 
   return { snapshot, inventory, marketNames };
+}
+
+function bulkProgressToPriceProgress(p: BulkCatalogProgress): PriceProgress {
+  return {
+    total: p.total,
+    done: p.done,
+    priced: p.loaded,
+    failed: 0,
+    current:
+      p.done < p.total
+        ? `Loading market catalog ${p.done}/${p.total}…`
+        : "Applying prices…",
+  };
+}
+
+/** Background step after upload — bulk catalog + price seed (does not block UI). */
+export async function seedBulkPricesForInventory(
+  marketNames: string[],
+  onProgress?: (p: PriceProgress) => void,
+): Promise<number> {
+  await ensureBulkCatalog(
+    onProgress ? (p) => onProgress(bulkProgressToPriceProgress(p)) : undefined,
+  );
+  return priceService.seedFromBulkCatalog(marketNames);
 }
 
 export function resolveWithPrices(

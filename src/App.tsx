@@ -13,13 +13,14 @@ import {
   type LocationFilter,
   type SortKey,
 } from "./lib/inventoryFilters";
-import { bulkCatalogStatus } from "./lib/bulkMarketCatalog";
-import { loadGameCatalog, refreshWikiCatalog } from "./lib/gameDataLoader";
+import { bulkCatalogStatus, ensureBulkCatalog } from "./lib/bulkMarketCatalog";
+import { loadGameCatalog, mergeWikiIntoCatalog, refreshWikiCatalog } from "./lib/gameDataLoader";
 import { priceService } from "./lib/priceService";
 import {
   processSaveFile,
   refreshPricesForSave,
   resolveWithPrices,
+  seedBulkPricesForInventory,
 } from "./lib/saveProcessor";
 import type { InventorySnapshot, PriceProgress, PriceStatus, ResolvedInventory } from "./types";
 
@@ -31,6 +32,7 @@ export default function App() {
   const [marketNames, setMarketNames] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploadStage, setUploadStage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [priceStatus, setPriceStatus] = useState<PriceStatus | null>(null);
   const [priceProgress, setPriceProgress] = useState<PriceProgress | null>(null);
@@ -52,6 +54,10 @@ export default function App() {
       localStorage.setItem("tbh-web-currency", DEFAULT_CURRENCY);
       priceService.setCurrency(DEFAULT_CURRENCY);
     }
+    // Warm bulk catalog cache while user picks a save file.
+    if (!bulkCatalogStatus().loaded) {
+      void ensureBulkCatalog();
+    }
   }, []);
 
   const updatePriceStatus = useCallback((names: string[]) => {
@@ -62,6 +68,32 @@ export default function App() {
     const catalog = await loadGameCatalog();
     setInventory(resolveWithPrices(snap, catalog));
   }, []);
+
+  const runInitialPriceLoad = useCallback(
+    async (snap: InventorySnapshot, names: string[]) => {
+      setPriceRunning(true);
+      setPriceMessage("Loading Steam market prices…");
+      try {
+        await seedBulkPricesForInventory(names, setPriceProgress);
+        await mergeWikiIntoCatalog();
+        await reresolveInventory(snap);
+        updatePriceStatus(names);
+        const missing = names.filter((n) => !priceService.hasPrice(n)).length;
+        if (missing > 0) {
+          setPriceMessage(
+            `${names.length - missing}/${names.length} items priced. ` +
+              `${missing} not on market or missing ${priceService.getCurrency()} listing.`,
+          );
+        } else {
+          setPriceMessage(null);
+        }
+      } finally {
+        setPriceRunning(false);
+        setPriceProgress(null);
+      }
+    },
+    [reresolveInventory, updatePriceStatus],
+  );
 
   const runPriceRefresh = useCallback(
     async (snap: InventorySnapshot, names: string[]) => {
@@ -96,6 +128,7 @@ export default function App() {
       setBusy(true);
       setUploadError(null);
       setPriceMessage(null);
+      setUploadStage("Decrypting save file…");
       try {
         const result = await processSaveFile(file, es3Password);
         setSnapshot(result.snapshot);
@@ -103,22 +136,15 @@ export default function App() {
         setMarketNames(result.marketNames);
         setFileName(file.name);
         updatePriceStatus(result.marketNames);
-        if (result.marketNames.length > 0) {
-          const missing = result.marketNames.filter((n) => !priceService.hasPrice(n)).length;
-          if (missing > 0) {
-            setPriceMessage(
-              `${result.marketNames.length - missing}/${result.marketNames.length} items have Steam prices. ` +
-                `${missing} not listed or no ${priceService.getCurrency()} price in catalog.`,
-            );
-          }
-        }
+        void runInitialPriceLoad(result.snapshot, result.marketNames);
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : "Failed to read save file.");
       } finally {
         setBusy(false);
+        setUploadStage(null);
       }
     },
-    [es3Password, updatePriceStatus],
+    [es3Password, runInitialPriceLoad, updatePriceStatus],
   );
 
   useEffect(() => {
@@ -250,6 +276,7 @@ export default function App() {
           <FileUpload
             onFile={handleFile}
             busy={busy}
+            busyLabel={uploadStage ?? "Processing…"}
             error={uploadError}
             password={es3Password}
             onPasswordChange={setEs3Password}

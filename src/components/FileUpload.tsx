@@ -19,12 +19,14 @@ export function storePassword(password: string): void {
 export function FileUpload({
   onFile,
   busy,
+  busyLabel = "Processing…",
   error,
   password,
   onPasswordChange,
 }: {
   onFile: (file: File) => void;
   busy: boolean;
+  busyLabel?: string;
   error: string | null;
   password: string;
   onPasswordChange: (password: string) => void;
@@ -70,7 +72,7 @@ export function FileUpload({
           in your browser — nothing is uploaded to a server.
         </p>
         <label className="mt-4 cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-bg hover:opacity-90">
-          {busy ? "Processing…" : "Choose file"}
+          {busy ? busyLabel : "Choose file"}
           <input
             type="file"
             accept=".es3"

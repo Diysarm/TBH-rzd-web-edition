@@ -3,8 +3,9 @@ import type { PriceEntry } from "../types";
 
 const CATALOG_STORAGE_KEY = "tbh-web-bulk-catalog";
 const CATALOG_TTL_MS = 24 * 60 * 60 * 1000;
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 100;
 const PAGE_DELAY_MS = 900;
+const PAGE_DELAY_CACHED_MS = 50;
 
 interface SearchRenderResult {
   name: string;
@@ -60,17 +61,21 @@ function saveStoredCatalog(catalog: StoredCatalog): void {
   localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(catalog));
 }
 
-async function fetchSearchPage(start: number): Promise<SearchRenderResponse | null> {
+async function fetchSearchPage(start: number): Promise<{ data: SearchRenderResponse | null; cached: boolean }> {
   const url = `/api/steam/search?start=${start}&count=${PAGE_SIZE}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) return null;
+    const cached =
+      res.headers.get("x-cache")?.includes("HIT") ||
+      res.headers.get("x-vercel-cache")?.includes("HIT") ||
+      Boolean(res.headers.get("age"));
+    if (!res.ok) return { data: null, cached };
     const text = await res.text();
-    if (!text || text.trim() === "null") return null;
+    if (!text || text.trim() === "null") return { data: null, cached };
     const data = JSON.parse(text) as SearchRenderResponse;
-    return data.success ? data : null;
+    return { data: data.success ? data : null, cached };
   } catch {
-    return null;
+    return { data: null, cached: false };
   }
 }
 
@@ -151,7 +156,7 @@ export async function ensureBulkCatalog(
     while (start < totalCount) {
       onProgress?.({ done: page, total: Math.ceil(totalCount / PAGE_SIZE), loaded: Object.keys(prices).length });
 
-      const data = await fetchSearchPage(start);
+      const { data, cached } = await fetchSearchPage(start);
       if (!data?.results?.length) break;
 
       totalCount = data.total_count || totalCount;
@@ -163,7 +168,9 @@ export async function ensureBulkCatalog(
 
       start += PAGE_SIZE;
       page++;
-      if (start < totalCount) await sleep(PAGE_DELAY_MS);
+      if (start < totalCount) {
+        await sleep(cached ? PAGE_DELAY_CACHED_MS : PAGE_DELAY_MS);
+      }
     }
 
     if (Object.keys(prices).length === 0) {

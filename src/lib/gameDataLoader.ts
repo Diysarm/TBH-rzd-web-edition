@@ -70,12 +70,19 @@ async function loadBundledCatalog(): Promise<Map<number, GameItem>> {
   return indexById(items);
 }
 
-export async function loadGameCatalog(options?: { forceWiki?: boolean }): Promise<Map<number, GameItem>> {
-  if (catalog && !options?.forceWiki) return catalog;
-  if (loadPromise && !options?.forceWiki) return loadPromise;
+export async function loadGameCatalog(options?: {
+  forceWiki?: boolean;
+  skipWiki?: boolean;
+}): Promise<Map<number, GameItem>> {
+  if (catalog && !options?.forceWiki && !options?.skipWiki) return catalog;
+  if (loadPromise && !options?.forceWiki && !options?.skipWiki) return loadPromise;
 
   loadPromise = (async () => {
     const bundled = await loadBundledCatalog();
+    if (options?.skipWiki) {
+      catalog = bundled;
+      return catalog;
+    }
     try {
       const wiki = await ensureWikiOverlay(options?.forceWiki ?? false);
       catalog = mergeCatalogMaps(bundled, wiki);
@@ -88,6 +95,18 @@ export async function loadGameCatalog(options?: { forceWiki?: boolean }): Promis
   });
 
   return loadPromise;
+}
+
+/** Merge wiki icons/names into an already-loaded bundled catalog (background). */
+export async function mergeWikiIntoCatalog(): Promise<Map<number, GameItem>> {
+  const bundled = catalog ?? (await loadBundledCatalog());
+  try {
+    const wiki = await ensureWikiOverlay(false);
+    catalog = mergeCatalogMaps(bundled, wiki);
+  } catch {
+    catalog = bundled;
+  }
+  return catalog;
 }
 
 export async function refreshWikiCatalog(): Promise<{ count: number; merged: number }> {
