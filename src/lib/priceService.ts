@@ -7,7 +7,7 @@ const DEFAULT_DELAY_MS = 3500;
 const MAX_DELAY_MS = 120_000;
 const MAX_429_RETRIES = 3;
 const MAX_ERROR_RETRIES = 2;
-const OVERVIEW_CONCURRENCY = 5;
+const OVERVIEW_CONCURRENCY = 50;
 const STORAGE_PREFIX = "tbh-web-prices:";
 
 type RefreshCallbacks = {

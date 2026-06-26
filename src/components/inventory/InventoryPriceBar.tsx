@@ -51,9 +51,7 @@ export function InventoryPriceBar({
   const fresh = status?.freshCount ?? 0;
   const total = status?.ownedTargets ?? 0;
   const showSteamErrorWarning = running && hasSteamFetchProblem(progress);
-  const problemItemNames = progress?.problemItems?.length
-    ? progress.problemItems.join(", ")
-    : "ITEM INI";
+  const problemItemNames = progress?.problemItems?.length ? progress.problemItems : ["ITEM INI"];
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-panel px-3 py-2.5">
@@ -94,11 +92,20 @@ export function InventoryPriceBar({
       </p>
 
       {showSteamErrorWarning && (
-        <p className="m-0 rounded-md border-2 border-danger bg-danger/15 px-3 py-2 text-lg font-black uppercase leading-tight text-danger sm:text-xl">
-          BENTAR WOY INI ADA ERROR FETCH HARGA DARI STEAM, ITEM INI {problemItemNames} GUA
-          RETRY FETCH YAK INI BAKAL DI PAUSE BENTAR, KALO ERROR LAGI AUK DAH PUSING PENCET
-          AE LAGI DAH ITU REFRESH
-        </p>
+        <div className="rounded-md border-2 border-danger bg-danger/15 px-3 py-2 text-lg font-black uppercase leading-tight text-danger sm:text-xl">
+          <p className="m-0">BENTAR WOY INI ADA ERROR FETCH HARGA DARI STEAM, ITEM INI:</p>
+          <ul className="m-0 my-2 list-disc space-y-1 pl-6 text-amber-300">
+            {problemItemNames.map((name) => (
+              <li key={name}>
+                <span className="rounded bg-amber-300/15 px-1 text-amber-200">{name}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="m-0">
+            GUA RETRY FETCH YAK INI BAKAL DI PAUSE BENTAR, KALO ERROR LAGI AUK DAH PUSING
+            PENCET AE LAGI DAH ITU REFRESH
+          </p>
+        </div>
       )}
 
       {running && <PriceProgressBar progress={progress} onStop={onStop} />}
