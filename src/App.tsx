@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileUpload, loadStoredPassword } from "./components/FileUpload";
 import { InventorySummary } from "./components/inventory/InventorySummary";
 import { InventoryPriceBar } from "./components/inventory/InventoryPriceBar";
@@ -39,6 +39,9 @@ export default function App() {
   const [priceMessage, setPriceMessage] = useState<string | null>(null);
   const [priceRunning, setPriceRunning] = useState(false);
   const [es3Password, setEs3Password] = useState(loadStoredPassword);
+  const priceProgressPricedRef = useRef(0);
+  const snapshotRef = useRef<InventorySnapshot | null>(null);
+  const progressReresolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [query, setQuery] = useState("");
   const [tradableOnly, setTradableOnly] = useState(false);
@@ -69,12 +72,42 @@ export default function App() {
     setInventory(resolveWithPrices(snap, catalog));
   }, []);
 
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  useEffect(
+    () => () => {
+      if (progressReresolveTimerRef.current) {
+        clearTimeout(progressReresolveTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleProgress = useCallback(
+    (progress: PriceProgress) => {
+      setPriceProgress(progress);
+      const activeSnapshot = snapshotRef.current;
+      if (activeSnapshot && progress.priced > priceProgressPricedRef.current) {
+        priceProgressPricedRef.current = progress.priced;
+        // Re-resolve as Steam overview prices arrive so inventory values update progressively.
+        if (progressReresolveTimerRef.current) clearTimeout(progressReresolveTimerRef.current);
+        progressReresolveTimerRef.current = setTimeout(() => {
+          void reresolveInventory(activeSnapshot);
+        }, 150);
+      }
+    },
+    [reresolveInventory],
+  );
+
   const runInitialPriceLoad = useCallback(
     async (snap: InventorySnapshot, names: string[]) => {
       setPriceRunning(true);
       setPriceMessage("Loading Steam market prices…");
+      priceProgressPricedRef.current = 0;
       try {
-        await seedBulkPricesForInventory(names, setPriceProgress);
+        await seedBulkPricesForInventory(names, handleProgress);
         await mergeWikiIntoCatalog();
         await reresolveInventory(snap);
         updatePriceStatus(names);
@@ -92,18 +125,19 @@ export default function App() {
         setPriceProgress(null);
       }
     },
-    [reresolveInventory, updatePriceStatus],
+    [handleProgress, reresolveInventory, updatePriceStatus],
   );
 
   const runPriceRefresh = useCallback(
     async (snap: InventorySnapshot, names: string[]) => {
       setPriceMessage(null);
       setPriceRunning(true);
+      priceProgressPricedRef.current = 0;
       const result = await refreshPricesForSave(names, {
         force: true,
         bulkOnly: false,
         forceReloadBulk: bulkCatalogStatus().isStale,
-        onProgress: setPriceProgress,
+        onProgress: handleProgress,
       });
       setPriceRunning(false);
       setPriceProgress(null);
@@ -120,7 +154,7 @@ export default function App() {
       }
       return result;
     },
-    [reresolveInventory, updatePriceStatus],
+    [handleProgress, reresolveInventory, updatePriceStatus],
   );
 
   const handleFile = useCallback(
@@ -295,7 +329,7 @@ export default function App() {
               running={priceRunning}
               message={priceMessage}
               onCurrencyChange={handleCurrencyChange}
-              onRefreshCatalog={handleRefreshPrices}
+              onRefresh={handleRefreshPrices}
               onStop={handleStopPrices}
             />
             <InventoryFilters

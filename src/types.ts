@@ -87,6 +87,7 @@ export interface PriceProgress {
   priced: number;
   failed: number;
   current: string;
+  problemItems?: string[];
 }
 
 export interface PriceStatus {

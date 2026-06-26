@@ -17,13 +17,26 @@ function fmtAge(iso: string | null): string {
   return `${Math.floor(secs / 86400)}d ago`;
 }
 
+function hasSteamFetchProblem(progress: PriceProgress | null): boolean {
+  if (!progress) return false;
+  const current = progress.current.toLowerCase();
+  return (
+    (progress.problemItems?.length ?? 0) > 0 ||
+    progress.failed > 0 ||
+    current.includes("error") ||
+    current.includes("failed") ||
+    current.includes("rate limit") ||
+    current.includes("retry")
+  );
+}
+
 export function InventoryPriceBar({
   status,
   progress,
   running,
   message,
   onCurrencyChange,
-  onRefreshCatalog,
+  onRefresh,
   onStop,
 }: {
   status: PriceStatus | null;
@@ -31,12 +44,16 @@ export function InventoryPriceBar({
   running: boolean;
   message: string | null;
   onCurrencyChange: (iso: string) => void;
-  onRefreshCatalog: () => void;
+  onRefresh: () => void;
   onStop: () => void;
 }) {
   const currency = status?.currency ?? "IDR";
   const fresh = status?.freshCount ?? 0;
   const total = status?.ownedTargets ?? 0;
+  const showSteamErrorWarning = running && hasSteamFetchProblem(progress);
+  const problemItemNames = progress?.problemItems?.length
+    ? progress.problemItems.join(", ")
+    : "ITEM INI";
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-panel px-3 py-2.5">
@@ -60,8 +77,8 @@ export function InventoryPriceBar({
         <button
           type="button"
           disabled={running}
-          onClick={onRefreshCatalog}
-          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-bg hover:opacity-90 disabled:opacity-50"
+          onClick={onRefresh}
+          className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm font-medium text-fg hover:bg-panel disabled:opacity-50"
         >
           {running ? "Loading…" : "Refresh prices"}
         </button>
@@ -75,6 +92,14 @@ export function InventoryPriceBar({
         Upload uses cached market catalog (fast). Refresh prices checks each item on Steam Market
         (~3s per item) — watch the progress bar and Network tab for priceoverview requests.
       </p>
+
+      {showSteamErrorWarning && (
+        <p className="m-0 rounded-md border-2 border-danger bg-danger/15 px-3 py-2 text-lg font-black uppercase leading-tight text-danger sm:text-xl">
+          BENTAR WOY INI ADA ERROR FETCH HARGA DARI STEAM, ITEM INI {problemItemNames} GUA
+          RETRY FETCH YAK INI BAKAL DI PAUSE BENTAR, KALO ERROR LAGI AUK DAH PUSING PENCET
+          AE LAGI DAH ITU REFRESH
+        </p>
+      )}
 
       {running && <PriceProgressBar progress={progress} onStop={onStop} />}
       {message && <p className="m-0 text-sm text-muted">{message}</p>}

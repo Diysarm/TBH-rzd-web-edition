@@ -6,6 +6,8 @@ import type { InventoryPriceInfo, PriceEntry, PriceProgress, PriceStatus } from 
 const DEFAULT_DELAY_MS = 3500;
 const MAX_DELAY_MS = 120_000;
 const MAX_429_RETRIES = 3;
+const MAX_ERROR_RETRIES = 2;
+const OVERVIEW_CONCURRENCY = 5;
 const STORAGE_PREFIX = "tbh-web-prices:";
 
 type RefreshCallbacks = {
@@ -307,8 +309,22 @@ export class PriceService {
 
     let failed = 0;
     let delay = DEFAULT_DELAY_MS;
-    let index = 0;
+    let done = 0;
     let abortOverview = false;
+    const pendingQueue = stillPending.slice();
+    const problemItems = new Set<string>();
+
+    const updateProgress = (current: string, problemName?: string) => {
+      if (problemName) problemItems.add(problemName);
+      callbacks.onProgress?.({
+        total: stillPending.length,
+        done,
+        priced,
+        failed,
+        current,
+        problemItems: Array.from(problemItems).slice(-5),
+      });
+    };
 
     callbacks.onProgress?.({
       total: stillPending.length,
@@ -321,61 +337,148 @@ export class PriceService {
           : "",
     });
 
-    while (index < stillPending.length && !abortOverview) {
-      if (this.cancelled) break;
+    const retryList: string[] = [];
 
-      const name = stillPending[index];
-      callbacks.onProgress?.({
-        total: stillPending.length,
-        done: index,
-        priced,
-        failed,
-        current: name,
-      });
-
-      let retries429 = 0;
-      let outcome: PriceFetchOutcome | null = null;
-
+    const worker = async () => {
       while (!this.cancelled && !abortOverview) {
-        outcome = await fetchSteamPrice(name, this.currency);
+        const name = pendingQueue.shift();
+        if (!name) break;
 
-        if (outcome.kind === "rate_limited") {
-          this.rateLimited = true;
-          retries429++;
-          if (retries429 >= MAX_429_RETRIES) {
-            abortOverview = true;
-            break;
+        updateProgress(name);
+
+        let retries429 = 0;
+        let retriesError = 0;
+        let outcome: PriceFetchOutcome | null = null;
+
+        while (!this.cancelled && !abortOverview) {
+          outcome = await fetchSteamPrice(name, this.currency);
+
+          if (outcome.kind === "rate_limited") {
+            retries429++;
+            if (retries429 >= MAX_429_RETRIES) {
+              this.rateLimited = true;
+              abortOverview = true;
+              break;
+            }
+            delay = Math.min(delay * 2, MAX_DELAY_MS);
+            updateProgress(`Steam rate limit - pausing ${Math.round(delay / 1000)}s`, name);
+            await sleepUntil(delay, () => this.cancelled);
+            continue;
           }
-          delay = Math.min(delay * 2, MAX_DELAY_MS);
-          callbacks.onProgress?.({
-            total: stillPending.length,
-            done: index,
-            priced,
-            failed,
-            current: `Steam rate limit — pausing ${Math.round(delay / 1000)}s`,
-          });
-          await sleepUntil(delay, () => this.cancelled);
-          continue;
+
+          if (outcome.kind === "error") {
+            retriesError++;
+            if (retriesError > MAX_ERROR_RETRIES) {
+              // give up on this item after retries
+              break;
+            }
+            const errDelay = Math.min(1000 * Math.pow(2, retriesError - 1), MAX_DELAY_MS);
+            updateProgress(
+              `Error fetching ${name} - retrying (${retriesError}/${MAX_ERROR_RETRIES}) in ${Math.round(errDelay / 1000)}s`,
+              name,
+            );
+            await sleepUntil(errDelay, () => this.cancelled);
+            continue;
+          }
+
+          break;
         }
 
-        break;
+        if (this.cancelled || abortOverview) break;
+
+        if (outcome?.kind === "priced" || outcome?.kind === "empty") {
+          this.cache[name] = outcome.entry;
+          priced++;
+          delay = DEFAULT_DELAY_MS;
+          if (priced % 5 === 0) saveCache(this.currency, this.cache);
+        } else if (outcome?.kind === "error") {
+          // mark failed for now and schedule a retry pass later
+          failed++;
+          retryList.push(name);
+          updateProgress(
+            `Failed fetching ${name} after ${retriesError} attempts; scheduled for retry pass`,
+            name,
+          );
+        }
+
+        done++;
+        updateProgress(name);
+
+        if (!this.cancelled && !abortOverview && pendingQueue.length > 0) {
+          await sleepUntil(delay, () => this.cancelled);
+        }
       }
+    };
 
-      if (this.cancelled || abortOverview) break;
+    await Promise.all(
+      Array.from({ length: Math.min(OVERVIEW_CONCURRENCY, stillPending.length) }, () =>
+        worker(),
+      ),
+    );
 
-      if (outcome?.kind === "priced" || outcome?.kind === "empty") {
-        this.cache[name] = outcome.entry;
-        priced++;
-        delay = DEFAULT_DELAY_MS;
-        if (priced % 5 === 0) saveCache(this.currency, this.cache);
-      } else if (outcome?.kind === "error") {
-        failed++;
-      }
+    // If some items failed after per-item retries, try one additional retry pass
+    if (retryList.length > 0 && !abortOverview && !this.cancelled) {
+      callbacks.onProgress?.({
+        total: stillPending.length,
+        done,
+        priced,
+        failed,
+          current: `Retrying ${retryList.length} failed item(s) once more...`,
+          problemItems: Array.from(problemItems).slice(-5),
+      });
 
-      index++;
+      for (const name of retryList.slice()) {
+        if (this.cancelled || abortOverview) break;
+        updateProgress(name);
 
-      if (index < stillPending.length && !this.cancelled && !abortOverview) {
-        await sleepUntil(delay, () => this.cancelled);
+        let retries429 = 0;
+        let retriesError = 0;
+        let outcome: PriceFetchOutcome | null = null;
+
+        while (!this.cancelled && !abortOverview) {
+          outcome = await fetchSteamPrice(name, this.currency);
+          if (outcome.kind === "rate_limited") {
+            retries429++;
+            if (retries429 >= MAX_429_RETRIES) {
+              this.rateLimited = true;
+              abortOverview = true;
+              break;
+            }
+            const retryDelay = Math.min(DEFAULT_DELAY_MS * Math.pow(2, retries429), MAX_DELAY_MS);
+            updateProgress(
+              `Retry-pass Steam rate limit for ${name} - pausing ${Math.round(retryDelay / 1000)}s`,
+              name,
+            );
+            await sleepUntil(retryDelay, () => this.cancelled);
+            continue;
+          }
+          if (outcome.kind === "error") {
+            retriesError++;
+            if (retriesError > MAX_ERROR_RETRIES) break;
+            const errDelay = Math.min(1000 * Math.pow(2, retriesError - 1), MAX_DELAY_MS);
+            updateProgress(
+              `Retry-pass error fetching ${name} - retrying (${retriesError}/${MAX_ERROR_RETRIES}) in ${Math.round(errDelay / 1000)}s`,
+              name,
+            );
+            await sleepUntil(errDelay, () => this.cancelled);
+            continue;
+          }
+          break;
+        }
+
+        if (this.cancelled || abortOverview) break;
+
+        if (outcome?.kind === "priced" || outcome?.kind === "empty") {
+          this.cache[name] = outcome.entry;
+          priced++;
+          failed = Math.max(0, failed - 1);
+          if (priced % 5 === 0) saveCache(this.currency, this.cache);
+        } else if (outcome?.kind === "error") {
+          updateProgress(`Retry-pass failed for ${name}; leaving it unpriced`, name);
+        }
+
+        updateProgress(name);
+        if (!this.cancelled && !abortOverview) await sleepUntil(DEFAULT_DELAY_MS, () => this.cancelled);
       }
     }
 
@@ -384,7 +487,7 @@ export class PriceService {
 
     callbacks.onProgress?.({
       total: stillPending.length,
-      done: index,
+      done,
       priced,
       failed,
       current: abortOverview ? "Stopped — Steam rate limit (catalog prices still shown)" : "",

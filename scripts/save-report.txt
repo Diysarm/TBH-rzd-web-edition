@@ -1,0 +1,34 @@
+Reading: C:\Users\muhra\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3
+File size: 305296 bytes
+Decrypting...
+Decrypt OK, text length: 305267
+Catalog loaded: 5885 items (game version 1.00.11)
+
+Total items in save: 267
+
+=== Checking items that should have been sold ===
+  ✅ 'Dimensional Shield' (id=400017) — NOT in save file (correctly removed)
+  ✅ 'Dimensional Scepter' (id=330017) — NOT in save file (correctly removed)
+  ✅ 'Tempest Staff' (id=320017) — NOT in save file (correctly removed)
+  ✅ 'Dimensional Orb' (id=420017) — NOT in save file (correctly removed)
+  ✅ 'Platinum Ring' (id=621051) — NOT in save file (correctly removed)
+
+=== Save file structure ===
+  equippedItemIds matches: 6
+  inventorySaveDatas present: true
+  stashSaveDatas present: true
+  tradingStashSaveDatas present: false
+
+=== Items NOT in catalog (unknown): 6 unique item keys ===
+  Unknown #910501 — 1 instance(s)
+  Unknown #910201 — 1 instance(s)
+  Unknown #910401 — 3 instance(s)
+  Unknown #920651 — 1 instance(s)
+  Unknown #920401 — 1 instance(s)
+  Unknown #910651 — 1 instance(s)
+
+=== Summary ===
+  Unique item keys in save: 104
+  Known in catalog: 98
+  Unknown: 6
+  Total instances: 267

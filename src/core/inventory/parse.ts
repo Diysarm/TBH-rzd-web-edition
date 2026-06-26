@@ -94,6 +94,7 @@ function parseItemsFromPlayerString(playerStr: string): InventoryItemInstance[] 
     if (itemKey <= 0) continue;
     const uniqueId = m[2];
     const location = resolveLocation(uniqueId, equipped, inventory, stash, trading);
+    if (location === "unknown") continue;
     items.push({
       itemKey,
       isChaotic: m[3] === "true",
@@ -104,7 +105,44 @@ function parseItemsFromPlayerString(playerStr: string): InventoryItemInstance[] 
   return items;
 }
 
+function parseItemUniqueIdsFromPlayerObject(
+  player: Record<string, unknown>,
+  arrayKey: string,
+): Set<string> {
+  const items = player[arrayKey];
+  if (!Array.isArray(items)) return new Set<string>();
+
+  const ids = new Set<string>();
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    const id = entry.ItemUniqueId ?? entry.UniqueId ?? entry.id;
+    if (id == null) continue;
+    const strId = String(id).trim();
+    if (strId !== "0" && strId !== "") ids.add(strId);
+  }
+  return ids;
+}
+
+function parseEquippedIdsFromPlayerObject(player: Record<string, unknown>): Set<string> {
+  const ids = new Set<string>();
+  const raw = player.equippedItemIds;
+  if (!Array.isArray(raw)) return ids;
+
+  for (const value of raw) {
+    if (value == null) continue;
+    const strId = String(value).trim();
+    if (strId !== "0" && strId !== "") ids.add(strId);
+  }
+  return ids;
+}
+
 function parseItemsFromPlayerObject(player: Record<string, unknown>): InventoryItemInstance[] {
+  const equipped = parseEquippedIdsFromPlayerObject(player);
+  const inventory = parseItemUniqueIdsFromPlayerObject(player, "inventorySaveDatas");
+  const stash = parseItemUniqueIdsFromPlayerObject(player, "stashSaveDatas");
+  const trading = parseItemUniqueIdsFromPlayerObject(player, "tradingStashSaveDatas");
+
   const items: InventoryItemInstance[] = [];
   const arr = player.itemSaveDatas;
   if (!Array.isArray(arr)) return items;
@@ -113,11 +151,16 @@ function parseItemsFromPlayerObject(player: Record<string, unknown>): InventoryI
     const it = raw as Record<string, unknown>;
     const itemKey = catalogItemKeyFromSave(Math.trunc(toNum(it.ItemKey, 0)));
     if (itemKey <= 0) continue;
+
+    const uniqueId = String(it.UniqueId ?? it.ItemUniqueId ?? it.id ?? "").trim();
+    const location = resolveLocation(uniqueId, equipped, inventory, stash, trading);
+    if (location === "unknown") continue;
+
     items.push({
       itemKey,
       isChaotic: Boolean(it.IsChaotic),
-      inUse: false,
-      location: "unknown",
+      inUse: equipped.has(uniqueId),
+      location,
     });
   }
   return items;
