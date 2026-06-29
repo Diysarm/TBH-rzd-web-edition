@@ -12,7 +12,7 @@ const LOCATIONS: { value: LocationFilter; label: string }[] = [
 export function InventoryFilters({
   query,
   tradableOnly,
-  inUseOnly,
+  showUsedGear,
   gradeFilter,
   typeFilter,
   locationFilter,
@@ -21,14 +21,14 @@ export function InventoryFilters({
   shownCount,
   onQueryChange,
   onTradableOnlyChange,
-  onInUseOnlyChange,
+  onShowUsedGearChange,
   onGradeFilterChange,
   onTypeFilterChange,
   onLocationFilterChange,
 }: {
   query: string;
   tradableOnly: boolean;
-  inUseOnly: boolean;
+  showUsedGear: boolean;
   gradeFilter: string;
   typeFilter: string;
   locationFilter: LocationFilter;
@@ -37,7 +37,7 @@ export function InventoryFilters({
   shownCount: number;
   onQueryChange: (v: string) => void;
   onTradableOnlyChange: (v: boolean) => void;
-  onInUseOnlyChange: (v: boolean) => void;
+  onShowUsedGearChange: (v: boolean) => void;
   onGradeFilterChange: (v: string) => void;
   onTypeFilterChange: (v: string) => void;
   onLocationFilterChange: (v: LocationFilter) => void;
@@ -88,8 +88,8 @@ export function InventoryFilters({
           ))}
         </select>
       </div>
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <label className="flex cursor-pointer items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-accent/20 bg-accent/5 px-3 py-3 text-base shadow-sm shadow-accent/10">
+        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-accent/30 bg-panel/80 px-3 py-2 text-sm font-semibold transition hover:border-accent hover:bg-panel">
           <input
             type="checkbox"
             checked={tradableOnly}
@@ -97,15 +97,15 @@ export function InventoryFilters({
           />
           Tradable only
         </label>
-        <label className="flex cursor-pointer items-center gap-1.5">
+        <label className="flex cursor-pointer items-center gap-2 rounded-md border border-accent/30 bg-panel/80 px-3 py-2 text-sm font-semibold transition hover:border-accent hover:bg-panel">
           <input
             type="checkbox"
-            checked={inUseOnly}
-            onChange={(e) => onInUseOnlyChange(e.target.checked)}
+            checked={showUsedGear}
+            onChange={(e) => onShowUsedGearChange(e.target.checked)}
           />
-          In use only
+          See used gear
         </label>
-        <span className="text-muted">{shownCount.toLocaleString()} shown</span>
+        <span className="text-muted ml-auto min-w-[120px] text-right text-sm">{shownCount.toLocaleString()} shown</span>
       </div>
     </div>
   );

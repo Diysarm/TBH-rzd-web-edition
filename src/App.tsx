@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FileUpload, loadStoredPassword } from "./components/FileUpload";
 import { InventorySummary } from "./components/inventory/InventorySummary";
 import { InventoryPriceBar } from "./components/inventory/InventoryPriceBar";
@@ -42,22 +42,66 @@ export default function App() {
   const priceProgressPricedRef = useRef(0);
   const snapshotRef = useRef<InventorySnapshot | null>(null);
   const progressReresolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const marqueeTextRef = useRef<HTMLSpanElement | null>(null);
+  const marqueeAnimRef = useRef<Animation | null>(null); // ← BARU
 
   const [query, setQuery] = useState("");
   const [tradableOnly, setTradableOnly] = useState(false);
-  const [inUseOnly, setInUseOnly] = useState(false);
+  const [showUsedGear, setShowUsedGear] = useState(false);
   const [gradeFilter, setGradeFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [locationFilter, setLocationFilter] = useState<LocationFilter>("ALL");
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
+  // ─── MARQUEE BOUNCE ────────────────────────────────────────────────────────
+  useLayoutEffect(() => {
+    function startMarquee() {
+      const text = marqueeTextRef.current;
+      if (!text) return;
+
+      const container = text.closest(".marquee-container") as HTMLElement;
+      if (!container) return;
+
+      const maxTravel = container.offsetWidth - text.offsetWidth;
+
+      // Kalau teks lebih lebar dari container, diam saja
+      if (maxTravel <= 0) {
+        text.style.transform = "translateX(0)";
+        return;
+      }
+
+      const duration = (maxTravel / 100) * 1000; //  per detik
+
+      marqueeAnimRef.current?.cancel();
+      marqueeAnimRef.current = text.animate(
+        [
+          { transform: "translateX(0)" },
+          { transform: `translateX(${maxTravel}px)` },
+        ],
+        {
+          duration,
+          direction: "alternate",
+          iterations: Infinity,
+          easing: "ease-in-out",
+        }
+      );
+    }
+
+    startMarquee();
+    window.addEventListener("resize", startMarquee);
+    return () => {
+      window.removeEventListener("resize", startMarquee);
+      marqueeAnimRef.current?.cancel();
+    };
+  }, []);
+  // ──────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!localStorage.getItem("tbh-web-currency")) {
       localStorage.setItem("tbh-web-currency", DEFAULT_CURRENCY);
       priceService.setCurrency(DEFAULT_CURRENCY);
     }
-    // Warm bulk catalog cache while user picks a save file.
     if (!bulkCatalogStatus().loaded) {
       void ensureBulkCatalog();
     }
@@ -91,7 +135,6 @@ export default function App() {
       const activeSnapshot = snapshotRef.current;
       if (activeSnapshot && progress.priced > priceProgressPricedRef.current) {
         priceProgressPricedRef.current = progress.priced;
-        // Re-resolve as Steam overview prices arrive so inventory values update progressively.
         if (progressReresolveTimerRef.current) clearTimeout(progressReresolveTimerRef.current);
         progressReresolveTimerRef.current = setTimeout(() => {
           void reresolveInventory(activeSnapshot);
@@ -208,7 +251,7 @@ export default function App() {
     return filterAndSortRows(inventory, {
       query,
       tradableOnly,
-      inUseOnly,
+      showUsedGear,
       gradeFilter,
       typeFilter,
       locationFilter,
@@ -219,7 +262,7 @@ export default function App() {
     inventory,
     query,
     tradableOnly,
-    inUseOnly,
+    showUsedGear,
     gradeFilter,
     typeFilter,
     locationFilter,
@@ -256,7 +299,7 @@ export default function App() {
   function clearFilters() {
     setQuery("");
     setTradableOnly(false);
-    setInUseOnly(false);
+    setShowUsedGear(false);
     setGradeFilter("ALL");
     setTypeFilter("ALL");
     setLocationFilter("ALL");
@@ -305,6 +348,23 @@ export default function App() {
         </div>
       </header>
 
+      {/* ── MARQUEE SECTION ── */}
+      <div className="w-full overflow-hidden border-b border-border bg-panel/70 backdrop-blur">
+        <div className="flex w-full px-4 py-4">
+          <div className="marquee-container relative overflow-hidden w-full rounded-full border border-border bg-gradient-to-r from-fuchsia-500/10 via-amber-400/10 to-cyan-500/10 px-4 py-6">
+            <div className="relative flex items-center h-12">
+              <span
+                ref={marqueeTextRef}
+                className="inline-block whitespace-nowrap text-4xl font-extrabold uppercase tracking-[0.3em] text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 via-amber-300 to-cyan-300"
+                style={{ willChange: "transform" }}
+              >
+                CIKUY MENCARI RECEH
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-6">
         {!inventory ? (
           <FileUpload
@@ -335,7 +395,7 @@ export default function App() {
             <InventoryFilters
               query={query}
               tradableOnly={tradableOnly}
-              inUseOnly={inUseOnly}
+              showUsedGear={showUsedGear}
               gradeFilter={gradeFilter}
               typeFilter={typeFilter}
               locationFilter={locationFilter}
@@ -344,7 +404,7 @@ export default function App() {
               shownCount={rows.length}
               onQueryChange={setQuery}
               onTradableOnlyChange={setTradableOnly}
-              onInUseOnlyChange={setInUseOnly}
+              onShowUsedGearChange={setShowUsedGear}
               onGradeFilterChange={setGradeFilter}
               onTypeFilterChange={setTypeFilter}
               onLocationFilterChange={setLocationFilter}

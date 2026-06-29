@@ -25,6 +25,28 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(calc(-1 * var(--marquee-text-width, 0px)));
+  }
+}
+
+.animate-marquee {
+  display: inline-flex;
+  width: max-content;
+  animation: marquee-scroll 1s linear infinite;
+}
+
+.marquee-text::after {
+  content: attr(data-text);
+  margin-left: 0;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
 code {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 0.9em;

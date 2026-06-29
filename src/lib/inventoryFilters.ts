@@ -8,7 +8,7 @@ export type LocationFilter = "ALL" | ItemLocation;
 export interface InventoryFilterState {
   query: string;
   tradableOnly: boolean;
-  inUseOnly: boolean;
+  showUsedGear: boolean;
   gradeFilter: string;
   typeFilter: string;
   locationFilter: LocationFilter;
@@ -35,7 +35,7 @@ export function filterAndSortRows(
   let rows = inv.rows.filter((row) => {
     const inUse = row.inUseCount ?? 0;
     if (state.tradableOnly && !row.marketTradable) return false;
-    if (state.inUseOnly && inUse <= 0) return false;
+    if (!state.showUsedGear && inUse > 0) return false;
     if (state.gradeFilter !== "ALL" && row.grade !== state.gradeFilter) return false;
     if (state.typeFilter !== "ALL" && row.type !== state.typeFilter) return false;
     if (state.locationFilter !== "ALL" && !rowMatchesLocation(row, state.locationFilter))
