@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FileUpload, loadStoredPassword } from "./components/FileUpload";
+import { Analytics } from "@vercel/analytics/react";
 import { InventorySummary } from "./components/inventory/InventorySummary";
 import { InventoryPriceBar } from "./components/inventory/InventoryPriceBar";
 import { InventoryFilters } from "./components/inventory/InventoryFilters";
@@ -433,6 +434,7 @@ export default function App() {
         </a>
         . Save files are processed locally in your browser.
       </footer>
+      <Analytics />
     </div>
   );
 }
