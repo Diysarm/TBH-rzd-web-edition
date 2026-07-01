@@ -354,12 +354,17 @@ export default function App() {
         <div className="flex w-full px-4 py-4">
           <div className="marquee-container relative overflow-hidden w-full rounded-full border border-border bg-gradient-to-r from-fuchsia-500/10 via-amber-400/10 to-cyan-500/10 px-4 py-6">
             <div className="relative flex items-center h-12">
+              {/* Transform diterapkan pada wrapper ini, BUKAN pada elemen
+                  bg-clip-text — kalau digabung, di Firefox teks gradasi
+                  hilang saat digeser (bug background-clip:text + translate). */}
               <span
                 ref={marqueeTextRef}
-                className="inline-block whitespace-nowrap text-4xl font-extrabold uppercase tracking-[0.3em] text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 via-amber-300 to-cyan-300"
+                className="inline-block whitespace-nowrap"
                 style={{ willChange: "transform" }}
               >
-                CIKUY MENCARI RECEH
+                <span className="text-4xl font-extrabold uppercase tracking-[0.3em] text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 via-amber-300 to-cyan-300">
+                  CIKUY MENCARI RECEH
+                </span>
               </span>
             </div>
           </div>
